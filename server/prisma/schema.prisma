@@ -1,0 +1,96 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String         @id @default(uuid()) @db.Uuid
+  name         String
+  email        String         @unique
+  passwordHash String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  conversations Conversation[]
+  refreshTokens RefreshToken[]
+  documents     Document[]
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  userId    String    @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Conversation {
+  id        String    @id @default(uuid()) @db.Uuid
+  title     String    @default("New Chat")
+  userId    String?   @db.Uuid
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([userId, updatedAt])
+  @@index([updatedAt])
+}
+
+model Message {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @db.Uuid
+  role           String
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model Document {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @db.Uuid
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  pageCount    Int?
+  status       String          @default("processing")
+  errorMessage String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks       DocumentChunk[]
+
+  @@index([userId])
+}
+
+model DocumentChunk {
+  id          String    @id @default(uuid()) @db.Uuid
+  documentId  String    @db.Uuid
+  content     String    @db.Text
+  chunkIndex  Int
+  pageNumber  Int?
+  embedding   Unsupported("vector(768)")?
+  createdAt   DateTime  @default(now())
+
+  document    Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}

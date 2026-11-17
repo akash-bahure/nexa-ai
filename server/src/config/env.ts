@@ -14,8 +14,16 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z.string().url().default("http://127.0.0.1:11434"),
   OLLAMA_MODEL: z.string().min(1).default("qwen2.5:0.5b-instruct"),
   OLLAMA_EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
+
+  GEMINI_API_KEY: z.string().min(1),
+  GEMINI_EMBEDDING_MODEL: z.string().min(1).default("gemini-embedding-001"),
+
   UPLOAD_MAX_FILE_SIZE_MB: z.coerce.number().positive().default(20),
   UPLOAD_DIR: z.string().default("uploads"),
+
+  AI_PROVIDER: z.enum(["ollama", "groq"]).default("ollama"),
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
 
   JWT_ACCESS_SECRET: z
     .string()

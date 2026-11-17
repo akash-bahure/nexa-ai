@@ -2,9 +2,9 @@ import { searchDocumentChunks } from "./document.service.js";
 import { env } from "../../config/env.js";
 import { AppError } from "../../middleware/error.middleware.js";
 import type { AIMessage } from "../ai/ai-provider.interface.js";
-import { OllamaProvider } from "../ai/ollama.provider.js";
+import { GroqProvider } from "../ai/groq.provider.js";
 
-const aiProvider = new OllamaProvider();
+const aiProvider = new GroqProvider();
 
 export interface RAGSource {
   documentId: string;
@@ -20,11 +20,19 @@ export interface RAGResult {
 
 const buildRAGPrompt = (
   query: string,
-  chunks: Array<{ content: string; pageNumber: number | null; originalName: string; documentId: string }>
+  chunks: Array<{
+    content: string;
+    pageNumber: number | null;
+    originalName: string;
+    documentId: string;
+  }>
 ): AIMessage[] => {
   const contextParts = chunks.map((chunk, i) => {
     const pageRef = chunk.pageNumber ? ` (page ${chunk.pageNumber})` : "";
-    return `[Source ${i + 1}: ${chunk.originalName}${pageRef}]\n${chunk.content}`;
+
+    return `[Source ${i + 1}: ${chunk.originalName}${pageRef}]\n${
+      chunk.content
+    }`;
   });
 
   const context = contextParts.join("\n\n---\n\n");
@@ -32,7 +40,16 @@ const buildRAGPrompt = (
   return [
     {
       role: "system",
-      content: `You are Nexa AI, a helpful document assistant. Answer the user's question based ONLY on the provided document context below. If the answer is not found in the documents, say so clearly. Always cite which document and page number (if available) your answer comes from, using [Source N] references.
+      content: `You are Nexa AI, a helpful document assistant.
+
+Answer the user's question based ONLY on the provided document context.
+
+Instructions:
+- Do not invent information.
+- If the answer is not available in the documents, clearly say so.
+- Cite relevant sources using [Source N] references.
+- Include page numbers when available.
+- Give clear, structured answers.
 
 DOCUMENT CONTEXT:
 ${context}`,
@@ -42,6 +59,10 @@ ${context}`,
       content: query,
     },
   ];
+};
+
+const getAnswerModel = (model?: string): string => {
+  return model || env.GROQ_MODEL;
 };
 
 export const answerWithRAG = async (
@@ -54,17 +75,24 @@ export const answerWithRAG = async (
     throw new AppError(400, "No documents selected for RAG query");
   }
 
-  const relevantChunks = await searchDocumentChunks(query, documentIds, userId, 5);
+  const relevantChunks = await searchDocumentChunks(
+    query,
+    documentIds,
+    userId,
+    5
+  );
 
   if (relevantChunks.length === 0) {
     return {
-      answer: "I could not find any relevant information in the selected documents to answer your question.",
+      answer:
+        "I could not find any relevant information in the selected documents to answer your question.",
       sources: [],
     };
   }
 
   const messages = buildRAGPrompt(query, relevantChunks);
-  const answer = await aiProvider.chat(messages, model || env.OLLAMA_MODEL);
+
+  const answer = await aiProvider.chat(messages, getAnswerModel(model));
 
   const sources: RAGSource[] = relevantChunks
     .filter((c) => c.similarity > 0.3)
@@ -89,7 +117,12 @@ export const answerWithRAGStream = async function* (
     throw new AppError(400, "No documents selected for RAG query");
   }
 
-  const relevantChunks = await searchDocumentChunks(query, documentIds, userId, 5);
+  const relevantChunks = await searchDocumentChunks(
+    query,
+    documentIds,
+    userId,
+    5
+  );
 
   if (relevantChunks.length === 0) {
     yield "I could not find any relevant information in the selected documents to answer your question.";
@@ -97,7 +130,8 @@ export const answerWithRAGStream = async function* (
   }
 
   const messages = buildRAGPrompt(query, relevantChunks);
-  const stream = aiProvider.chatStream(messages, model || env.OLLAMA_MODEL);
+
+  const stream = aiProvider.chatStream(messages, getAnswerModel(model));
 
   for await (const token of stream) {
     yield token;
@@ -109,7 +143,13 @@ export const getRAGSources = async (
   documentIds: string[],
   userId: string
 ): Promise<RAGSource[]> => {
-  const relevantChunks = await searchDocumentChunks(query, documentIds, userId, 3);
+  const relevantChunks = await searchDocumentChunks(
+    query,
+    documentIds,
+    userId,
+    3
+  );
+
   return relevantChunks
     .filter((c) => c.similarity > 0.3)
     .map((c) => ({

@@ -1,8 +1,12 @@
+import { env } from "../config/env.js";
 
 import { OllamaProvider } from "./ai/ollama.provider.js";
-import type { AIMessage } from "./ai/ai-provider.interface.js";
+import { GroqProvider } from "./ai/groq.provider.js";
 
-const aiProvider = new OllamaProvider();
+import type { AIMessage, AIProvider } from "./ai/ai-provider.interface.js";
+
+const aiProvider: AIProvider =
+  env.AI_PROVIDER === "groq" ? new GroqProvider() : new OllamaProvider();
 
 const SYSTEM_PROMPT =
   "You are Nexa AI, a helpful, accurate, and friendly AI assistant. Give clear and useful answers.";

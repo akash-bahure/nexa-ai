@@ -31,6 +31,10 @@ export const processDocument = async (documentId: string): Promise<void> => {
       return;
     }
 
+    await prisma.documentChunk.deleteMany({
+      where: { documentId },
+    });
+
     const embeddings = await generateEmbeddings(chunks.map((c) => c.content));
 
     // Insert chunks with embeddings using raw SQL (pgvector requires it)
@@ -55,11 +59,14 @@ export const processDocument = async (documentId: string): Promise<void> => {
       data: { status: "completed" },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Processing failed";
-    await prisma.document.update({
-      where: { id: documentId },
-      data: { status: "error", errorMessage: message },
-    }).catch(() => {});
+    const message =
+      error instanceof Error ? error.message : "Processing failed";
+    await prisma.document
+      .update({
+        where: { id: documentId },
+        data: { status: "error", errorMessage: message },
+      })
+      .catch(() => {});
     throw error;
   }
 };
@@ -70,21 +77,32 @@ export const searchDocumentChunks = async (
   documentIds: string[],
   userId: string,
   topK = 5
-): Promise<Array<{ content: string; chunkIndex: number; pageNumber: number | null; documentId: string; originalName: string; similarity: number }>> => {
+): Promise<
+  Array<{
+    content: string;
+    chunkIndex: number;
+    pageNumber: number | null;
+    documentId: string;
+    originalName: string;
+    similarity: number;
+  }>
+> => {
   const queryEmbedding = await generateEmbedding(query);
   const embeddingStr = `[${queryEmbedding.join(",")}]`;
 
   // Build safe placeholder list for document IDs
   const placeholders = documentIds.map((_, i) => `$${i + 3}::uuid`).join(", ");
 
-  const rows = await prisma.$queryRawUnsafe<Array<{
-    content: string;
-    chunk_index: number;
-    page_number: number | null;
-    document_id: string;
-    original_name: string;
-    similarity: number;
-  }>>(
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      content: string;
+      chunk_index: number;
+      page_number: number | null;
+      document_id: string;
+      original_name: string;
+      similarity: number;
+    }>
+  >(
     `SELECT
        dc.content,
        dc."chunkIndex" as chunk_index,
@@ -150,9 +168,15 @@ export const getDocumentById = async (id: string, userId: string) => {
   });
 };
 
-export const deleteDocument = async (id: string, userId: string): Promise<boolean> => {
+export const deleteDocument = async (
+  id: string,
+  userId: string
+): Promise<boolean> => {
   // Also delete the actual file
-  const doc = await prisma.document.findFirst({ where: { id, userId }, select: { filename: true } });
+  const doc = await prisma.document.findFirst({
+    where: { id, userId },
+    select: { filename: true },
+  });
   if (!doc) return false;
 
   const result = await prisma.document.deleteMany({ where: { id, userId } });

@@ -1,53 +1,73 @@
+import { GoogleGenAI } from "@google/genai";
 import { env } from "../../config/env.js";
 import { AppError } from "../../middleware/error.middleware.js";
 
-interface OllamaEmbedResponse {
-  embedding?: number[];
-  embeddings?: number[][];
-}
+const genAI = new GoogleGenAI({
+  apiKey: env.GEMINI_API_KEY,
+});
 
-export const generateEmbedding = async (text: string): Promise<number[]> => {
-  let response: Response;
+const EMBEDDING_DIMENSIONS = 768;
+
+type EmbeddingTask = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY";
+
+const createEmbedding = async (
+  text: string,
+  taskType: EmbeddingTask
+): Promise<number[]> => {
+  if (!text.trim()) {
+    throw new AppError(400, "Cannot generate embedding for empty text");
+  }
 
   try {
-    response = await fetch(`${env.OLLAMA_BASE_URL}/api/embed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: env.OLLAMA_EMBEDDING_MODEL,
-        input: text,
-      }),
-      signal: AbortSignal.timeout(60000),
+    const response = await genAI.models.embedContent({
+      model: env.GEMINI_EMBEDDING_MODEL,
+      contents: text,
+      config: {
+        taskType,
+        outputDimensionality: EMBEDDING_DIMENSIONS,
+      },
     });
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new AppError(504, "Embedding request timed out");
+
+    const embedding = response.embeddings?.[0]?.values;
+
+    if (!embedding || embedding.length !== EMBEDDING_DIMENSIONS) {
+      throw new AppError(
+        502,
+        `Gemini returned an invalid embedding dimension. Expected ${EMBEDDING_DIMENSIONS}.`
+      );
     }
-    throw new AppError(503, "Unable to connect to Ollama for embeddings");
+
+    return embedding;
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new AppError(504, "Gemini embedding request timed out");
+    }
+
+    throw new AppError(
+      502,
+      "Gemini embedding generation failed. Check API configuration and quota."
+    );
   }
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new AppError(502, `Ollama embedding failed: ${response.status} ${body}`);
-  }
-
-  const data = (await response.json()) as OllamaEmbedResponse;
-
-  // Ollama /api/embed returns { embeddings: [[...]] }, older versions { embedding: [...] }
-  const embedding = data.embeddings?.[0] ?? data.embedding;
-
-  if (!embedding || embedding.length === 0) {
-    throw new AppError(502, "Ollama returned empty embedding");
-  }
-
-  return embedding;
 };
 
-export const generateEmbeddings = async (texts: string[]): Promise<number[][]> => {
+// Used for user questions during retrieval.
+export const generateEmbedding = async (text: string): Promise<number[]> => {
+  return createEmbedding(text, "RETRIEVAL_QUERY");
+};
+
+// Used for uploaded document chunks.
+export const generateEmbeddings = async (
+  texts: string[]
+): Promise<number[][]> => {
   const results: number[][] = [];
+
   for (const text of texts) {
-    const embedding = await generateEmbedding(text);
-    results.push(embedding);
+    results.push(await createEmbedding(text, "RETRIEVAL_DOCUMENT"));
   }
+
   return results;
 };

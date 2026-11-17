@@ -1,5 +1,7 @@
 import swaggerJsdoc from "swagger-jsdoc";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.3",
@@ -12,12 +14,10 @@ const options: swaggerJsdoc.Options = {
 
     servers: [
       {
-        url: "http://localhost:4000/api/v1",
-        description: "Development server",
-      },
-      {
-        url: "https://nexa-ai-backend-dmo5.onrender.com/api/v1",
-        description: "Production server",
+        url: isProduction
+          ? "https://nexa-ai-backend-dmo5.onrender.com/api/v1"
+          : "http://localhost:4000/api/v1",
+        description: isProduction ? "Production server" : "Development server",
       },
     ],
   },

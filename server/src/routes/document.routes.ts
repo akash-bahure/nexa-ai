@@ -11,11 +11,21 @@ import {
   queryDocuments,
   queryDocumentsStream,
 } from "../controllers/document.controller.js";
+import fs from "fs";
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, env.UPLOAD_DIR);
+    const uploadDir = path.resolve(process.cwd(), env.UPLOAD_DIR);
+
+    fs.mkdir(uploadDir, { recursive: true }, (error) => {
+      if (error) {
+        return cb(error, uploadDir);
+      }
+
+      cb(null, uploadDir);
+    });
   },
+
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname);
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
